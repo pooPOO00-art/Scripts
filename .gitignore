@@ -1,0 +1,10 @@
+# 전부 무시
+*
+
+# .gitignore 자신과 Git 메타는 필요
+!.gitignore
+!.gitattributes
+
+# Scripts 폴더만 허용
+!Scripts/
+!Scripts/**
