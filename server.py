@@ -12,9 +12,7 @@ from pymysql.cursors import DictCursor
 app = Flask(__name__)
 CORS(app)
 
-app = Flask(__name__)
-CORS(app)app = Flask(__name__)
-CORS(app)
+
 # ✅ 사용자 로그인
 @app.route("/user/login", methods=["POST"])
 def login_user():
@@ -275,23 +273,33 @@ def get_questions():
         if 'conn' in locals():
             conn.close()
 
-# ✅ 권장 수정 버전
+# ✅ 견적 요청 저장 API
 @app.route("/estimate", methods=["POST"])
 def submit_estimate():
+    """
+    사용자가 견적 요청을 보낼 때 호출되는 API
+    - user_id, category_id, district_id는 필수
+    - expert_id가 0이면 NULL로 저장 (아직 전문가 배정되지 않음)
+    - 옵션(option_ids)은 별도 테이블(user_selected_option)에 저장
+    """
     data = request.get_json()
     user_id = data.get("user_id")
     category_id = data.get("category_id")
     district_id = data.get("district_id")
     selected_options = data.get("option_ids", [])
-    expert_id = data.get("expert_id")  # ✅ 직접견적 여부
+    expert_id = data.get("expert_id")  # 직접견적 여부 (없으면 0)
 
     print(f"✅ [서버] 견적 요청: user_id={user_id}, category_id={category_id}, "
           f"district_id={district_id}, expert_id={expert_id}, options={selected_options}")
 
+    # ✅ expert_id가 0이면 NULL로 변환 (FK 위반 방지)
+    if not expert_id or expert_id == 0:
+        expert_id = None
+
     try:
         conn = get_connection()
         with conn.cursor() as cursor:
-            # 1️⃣ 상태는 항상 요청중으로 시작
+            # 1️⃣ estimate_request 저장
             sql_insert_request = """
                 INSERT INTO estimate_request 
                     (user_id, category_id, district_id, expert_id, status, created_at)
@@ -299,9 +307,9 @@ def submit_estimate():
             """
             cursor.execute(sql_insert_request, 
                            (user_id, category_id, district_id, expert_id))
-            estimate_id = cursor.lastrowid
+            estimate_id = cursor.lastrowid  # 방금 삽입된 PK
 
-            # 2️⃣ 옵션 저장
+            # 2️⃣ 선택된 옵션 저장
             sql_insert_option = """
                 INSERT INTO user_selected_option (estimate_id, option_id)
                 VALUES (%s, %s)
@@ -311,14 +319,17 @@ def submit_estimate():
 
             conn.commit()
 
+        print(f"✅ 견적 저장 완료: estimate_id={estimate_id}")
         return jsonify({"success": True, "estimate_id": estimate_id})
 
     except Exception as e:
         print("❌ 견적 저장 실패:", e)
         return jsonify({"success": False, "message": str(e)}), 500
+
     finally:
         if 'conn' in locals():
             conn.close()
+
 
 
             
